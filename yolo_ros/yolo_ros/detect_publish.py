@@ -15,11 +15,14 @@ class ConeDetector(Node):
         self.declare_parameter('input_mode', 'ros2')  # 'webcam' 또는 'ros2'
         self.declare_parameter('image_topic', '/image_raw')
         self.declare_parameter('webcam_id', 2)
+        # 추가: Crimson 검증 활성화 여부 파라미터
+        self.declare_parameter('enable_crimson_validation', False)
         
         # 파라미터 읽기
         self.input_mode = self.get_parameter('input_mode').value
         self.image_topic = self.get_parameter('image_topic').value
         self.webcam_id = self.get_parameter('webcam_id').value
+        self.enable_crimson_validation = self.get_parameter('enable_crimson_validation').value
         
         # 퍼블리셔 생성 (큐 사이즈 10)
         self.publisher_ = self.create_publisher(String, 'cone_info', 10)
@@ -28,6 +31,7 @@ class ConeDetector(Node):
         self.cv_bridge = CvBridge()
         
         # YOLOv8 모델 로드
+        # 대회장 콘 사진 학습, 블루, 옐로, 레드콘 클래스. 
         self.model = YOLO('/home/user1/yolov12/pretrained_models/yolov8_cone.pt')
         
         # 입력 모드에 따른 초기화
@@ -59,7 +63,6 @@ class ConeDetector(Node):
         }
         
         # Crimson 검증을 위한 HSV 및 BGR 범위 설정
-        # HSV 기반 범위: 빨강은 양쪽 끝에 걸치므로 두 범위를 사용
         self.lower_crimson1 = np.array([0, 20, 20])
         self.upper_crimson1 = np.array([20, 255, 255])
         self.lower_crimson2 = np.array([160, 20, 20])
@@ -127,20 +130,21 @@ class ConeDetector(Node):
             if roi.size == 0:
                 continue
             
-            # OpenCV 기반 Crimson 검증
-            roi_hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-            mask_crimson_hsv = cv2.bitwise_or(
-                cv2.inRange(roi_hsv, self.lower_crimson1, self.upper_crimson1),
-                cv2.inRange(roi_hsv, self.lower_crimson2, self.upper_crimson2)
-            )
-            mask_crimson_bgr = cv2.inRange(roi, self.lower_crimson_bgr, self.upper_crimson_bgr)
-            mask_crimson = cv2.bitwise_or(mask_crimson_hsv, mask_crimson_bgr)
-            
-            roi_area = roi.shape[0] * roi.shape[1]
-            crimson_ratio = cv2.countNonZero(mask_crimson) / roi_area
-            
-            if crimson_ratio > self.threshold_ratio:
-                final_label = "Crimson Cone"
+            # OpenCV 기반 Crimson 검증 (모듈화)
+            if self.enable_crimson_validation:
+                roi_hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+                mask_crimson_hsv = cv2.bitwise_or(
+                    cv2.inRange(roi_hsv, self.lower_crimson1, self.upper_crimson1),
+                    cv2.inRange(roi_hsv, self.lower_crimson2, self.upper_crimson2)
+                )
+                mask_crimson_bgr = cv2.inRange(roi, self.lower_crimson_bgr, self.upper_crimson_bgr)
+                mask_crimson = cv2.bitwise_or(mask_crimson_hsv, mask_crimson_bgr)
+                
+                roi_area = roi.shape[0] * roi.shape[1]
+                crimson_ratio = cv2.countNonZero(mask_crimson) / roi_area
+                
+                if crimson_ratio > self.threshold_ratio:
+                    final_label = "Crimson Cone"
             
             # 최종 라벨에 따른 바운딩박스 색상 선택
             box_color = self.color_mapping.get(final_label, (0, 255, 0))
@@ -148,7 +152,7 @@ class ConeDetector(Node):
             # 바운딩박스 및 라벨 그리기
             cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
             cv2.putText(frame, f"{final_label} ({conf:.2f})", (x1, y1 - 10),
-                      cv2.FONT_HERSHEY_SIMPLEX, 0.5, box_color, 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, box_color, 2)
             
             # 탐지 정보 문자열 추가 (예: "Crimson Cone: (320, 180)")
             detection_info.append(f"{final_label}: ({cx}, {cy})")

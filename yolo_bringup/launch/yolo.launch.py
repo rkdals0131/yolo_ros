@@ -1,6 +1,15 @@
 # ROS2 런치 파일로, 여러 매개변수(Launch Argument)를 선언하고, 조건에 따라 여러 노드를 실행하는 역할을 합니다.
 # 이 파일은 Ultralytics YOLO 모델(및 관련 기능)을 ROS2 환경에서 실행하기 위한 설정을 제공합니다.
 #
+# 주요 기능:
+# 1. YOLO 노드 실행 (객체 감지)
+# 2. 추적 노드 실행 (선택적)
+# 3. 3D 감지 노드 실행 (선택적)
+# 4. 디버그 노드 실행 (선택적)
+#
+# 다양한 매개변수를 통해 모델 유형, 경로, 추론 설정, 토픽 이름 등을 구성할 수 있습니다.
+# 조건부 노드 실행을 통해 필요한 기능만 선택적으로 활성화할 수 있습니다.
+#
 # Miguel Ángel González Santamarta의 저작권 및 GNU GPL 라이선스 하에 배포됩니다.
 
 from launch import LaunchDescription, LaunchContext
@@ -30,7 +39,8 @@ def generate_launch_description():
         model = LaunchConfiguration("model")
         model_cmd = DeclareLaunchArgument(
             "model",
-            default_value="/home/user1/yolov12/pretrained_models/yolov11n.pt",
+            # default_value="/home/user1/yolov12/pretrained_models/yolov12n.pt",
+            default_value="/home/user1/yolov12/pretrained_models/yolov8_cone.pt",
             description="모델 이름 또는 경로",
         )
 

@@ -47,8 +47,17 @@ from yolo_msgs.srv import SetClasses
 
 
 class YoloNode(LifecycleNode):
+    """
+    ROS2 Node for YOLO object detection using lifecycle management.
+    Supports both standard YOLO and YOLOWorld models.
+    """
+
 
     def __init__(self) -> None:
+        """
+        Initialize the YOLO node with configurable parameters for model settings,
+        inference settings, and ROS communication settings.
+        """
         super().__init__("yolo_node")
 
         # params
@@ -72,6 +81,15 @@ class YoloNode(LifecycleNode):
         self.type_to_model = {"YOLO": YOLO, "World": YOLOWorld}
 
     def on_configure(self, state: LifecycleState) -> TransitionCallbackReturn:
+        """
+        Lifecycle configure callback. Sets up parameters, publishers, and basic node configuration.
+        Does not load the model yet.
+
+        Args:
+            state: Current lifecycle state
+        Returns:
+            TransitionCallbackReturn indicating success/failure
+        """
         self.get_logger().info(f"[{self.get_name()}] Configuring...")
 
         # model params
@@ -125,6 +143,15 @@ class YoloNode(LifecycleNode):
         return TransitionCallbackReturn.SUCCESS
 
     def on_activate(self, state: LifecycleState) -> TransitionCallbackReturn:
+        """
+        Lifecycle activate callback. Loads the YOLO model, sets up subscribers and services,
+        and prepares the node for processing.
+
+        Args:
+            state: Current lifecycle state
+        Returns:
+            TransitionCallbackReturn indicating success/failure
+        """
         self.get_logger().info(f"[{self.get_name()}] Activating...")
 
         try:
@@ -156,6 +183,15 @@ class YoloNode(LifecycleNode):
         return TransitionCallbackReturn.SUCCESS
 
     def on_deactivate(self, state: LifecycleState) -> TransitionCallbackReturn:
+        """
+        Lifecycle deactivate callback. Cleans up model resources, CUDA cache,
+        and removes subscribers and services.
+
+        Args:
+            state: Current lifecycle state
+        Returns:
+            TransitionCallbackReturn indicating success/failure
+        """
         self.get_logger().info(f"[{self.get_name()}] Deactivating...")
 
         del self.yolo
@@ -179,6 +215,14 @@ class YoloNode(LifecycleNode):
         return TransitionCallbackReturn.SUCCESS
 
     def on_cleanup(self, state: LifecycleState) -> TransitionCallbackReturn:
+        """
+        Lifecycle cleanup callback. Removes publishers and cleans up remaining resources.
+
+        Args:
+            state: Current lifecycle state
+        Returns:
+            TransitionCallbackReturn indicating success/failure
+        """
         self.get_logger().info(f"[{self.get_name()}] Cleaning up...")
 
         self.destroy_publisher(self._pub)
@@ -191,6 +235,14 @@ class YoloNode(LifecycleNode):
         return TransitionCallbackReturn.SUCCESS
 
     def on_shutdown(self, state: LifecycleState) -> TransitionCallbackReturn:
+        """
+        Lifecycle shutdown callback. Performs final cleanup before node shutdown.
+
+        Args:
+            state: Current lifecycle state
+        Returns:
+            TransitionCallbackReturn indicating success/failure
+        """
         self.get_logger().info(f"[{self.get_name()}] Shutting down...")
         super().on_cleanup(state)
         self.get_logger().info(f"[{self.get_name()}] Shutted down")
@@ -201,12 +253,28 @@ class YoloNode(LifecycleNode):
         request: SetBool.Request,
         response: SetBool.Response,
     ) -> SetBool.Response:
+        """
+        Service callback to enable/disable detection processing.
+
+        Args:
+            request: Boolean enable/disable request
+            response: Service response
+        Returns:
+            SetBool.Response with success status
+        """
         self.enable = request.data
         response.success = True
         return response
 
     def parse_hypothesis(self, results: Results) -> List[Dict]:
+        """
+        Parse detection results to extract class information and confidence scores.
 
+        Args:
+            results: YOLO detection results
+        Returns:
+            List of dictionaries containing class IDs, names, and confidence scores
+        """
         hypothesis_list = []
 
         if results.boxes:
@@ -231,7 +299,15 @@ class YoloNode(LifecycleNode):
         return hypothesis_list
 
     def parse_boxes(self, results: Results) -> List[BoundingBox2D]:
+        """
+        Parse detection results to extract bounding box information.
+        Handles both standard rectangular boxes and oriented bounding boxes (OBB).
 
+        Args:
+            results: YOLO detection results
+        Returns:
+            List of BoundingBox2D messages
+        """
         boxes_list = []
 
         if results.boxes:
@@ -268,7 +344,14 @@ class YoloNode(LifecycleNode):
         return boxes_list
 
     def parse_masks(self, results: Results) -> List[Mask]:
+        """
+        Parse detection results to extract segmentation mask information.
 
+        Args:
+            results: YOLO detection results
+        Returns:
+            List of Mask messages containing polygon points
+        """
         masks_list = []
 
         def create_point2d(x: float, y: float) -> Point2D:
@@ -294,7 +377,15 @@ class YoloNode(LifecycleNode):
         return masks_list
 
     def parse_keypoints(self, results: Results) -> List[KeyPoint2DArray]:
+        """
+        Parse detection results to extract keypoint information.
+        Filters keypoints based on confidence threshold.
 
+        Args:
+            results: YOLO detection results
+        Returns:
+            List of KeyPoint2DArray messages
+        """
         keypoints_list = []
 
         points: Keypoints
@@ -322,7 +413,13 @@ class YoloNode(LifecycleNode):
         return keypoints_list
 
     def image_cb(self, msg: Image) -> None:
+        """
+        Callback for processing incoming images. Performs YOLO inference and publishes results.
+        Handles detection boxes, masks, and keypoints based on model capabilities.
 
+        Args:
+            msg: Input image message
+        """
         if self.enable:
 
             # convert image + predict
@@ -388,6 +485,15 @@ class YoloNode(LifecycleNode):
         req: SetClasses.Request,
         res: SetClasses.Response,
     ) -> SetClasses.Response:
+        """
+        Service callback to dynamically update detection classes for YOLOWorld models.
+
+        Args:
+            req: Request containing new classes to detect
+            res: Service response
+        Returns:
+            SetClasses.Response
+        """
         self.get_logger().info(f"Setting classes: {req.classes}")
         self.yolo.set_classes(req.classes)
         self.get_logger().info(f"New classes: {self.yolo.names}")
