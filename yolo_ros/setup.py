@@ -26,6 +26,7 @@ setup(
             "detect_publish = yolo_ros.detect_publish:main",
             "detect_publish_ycbcr = yolo_ros.detect_publish_ycbcr:main",
             "detect_publish_hsv = yolo_ros.detect_publish_hsv:main",
+            "yolo_debug_node = yolo_ros.yolo_debug_node:main",
         ],
     },
 )

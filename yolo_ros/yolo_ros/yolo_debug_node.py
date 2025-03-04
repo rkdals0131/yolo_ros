@@ -22,16 +22,8 @@ from yolo_msgs.msg import DetectionArray
 
 
 class YoloDebugNode(LifecycleNode):
-    """
-    ROS 2 Lifecycle Node for YOLO object detection from camera feeds.
-    This node:
-    1. Subscribes to camera images
-    2. Processes them with YOLO object detection
-    3. Publishes detection results as messages
-    """
     
     def __init__(self) -> None:
-        """Initialize the node with parameters needed for YOLO model configuration"""
         super().__init__("yolo_debug_node")
         
         # Declare model parameters with default values
@@ -173,7 +165,7 @@ class YoloDebugNode(LifecycleNode):
         # super().on_cleanup(state)
         super().on_shutdown(state)  # Corrected method call
         
-        self.get_logger().info(f"[{self.get_name()}] Shutted down")  # Grammar: "Shut down" would be better
+        self.get_logger().info(f"[{self.get_name()}] Shut down")
 
         return TransitionCallbackReturn.SUCCESS
 
@@ -320,14 +312,13 @@ class YoloDebugNode(LifecycleNode):
 
 
 def main():
-    """Main function to initialize and run the node"""
-    rclpy.init()                   # Initialize ROS client library
-    node = YoloDebugNode()         # Create node instance
-    node.trigger_configure()       # Configure lifecycle node
-    node.trigger_activate()        # Activate lifecycle node
-    rclpy.spin(node)               # Spin node to process callbacks
-    node.destroy_node()            # Clean up node on shutdown
-    rclpy.shutdown()               # Shutdown ROS client library
+    rclpy.init()                   
+    node = YoloDebugNode()         
+    node.trigger_configure()       
+    node.trigger_activate()        
+    rclpy.spin(node)               
+    node.destroy_node()            
+    rclpy.shutdown()               
 
 if __name__ == "__main__":
     main()
