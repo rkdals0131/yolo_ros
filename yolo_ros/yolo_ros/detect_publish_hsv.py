@@ -97,13 +97,60 @@ class ConeDetector(Node):
     def detect_from_ros2(self, msg):
         """ROS2 이미지 토픽에서 콘 감지"""
         try:
-            # ROS 이미지 메시지를 OpenCV 이미지로 변환
-            frame = self.cv_bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+            # 메시지 자체 검사
+            if msg is None:
+                self.get_logger().warn("Received None message")
+                return
+                
+            # 메시지 크기 및 인코딩 정보 출력 (디버깅용)
+            self.get_logger().info(f"Image message received: encoding={msg.encoding}, height={msg.height}, width={msg.width}")
             
+            # 데이터 검사
+            if len(msg.data) == 0:
+                self.get_logger().warn("Image message has empty data")
+                return
+                
+            # 패스스루 방식을 먼저 시도 - 원본 인코딩 유지
+            try:
+                frame = self.cv_bridge.imgmsg_to_cv2(msg, 'passthrough')
+                if frame is not None and frame.size > 0:
+                    # 인코딩에 따라 적절히 변환
+                    if msg.encoding.lower() in ['rgb8', 'rgb16']:
+                        # RGB를 BGR로 변환
+                        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                    elif msg.encoding.lower() == 'rgba8':
+                        # RGBA를 BGR로 변환
+                        frame = cv2.cvtColor(frame, cv2.COLOR_RGBA2BGR)
+                    elif msg.encoding.lower() == 'mono8' and len(frame.shape) == 2:
+                        # 그레이스케일을 BGR로 변환
+                        frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+                    elif msg.encoding.lower() == 'bgr8':
+                        # 이미 BGR 형식이므로 변환 필요 없음
+                        pass
+                    else:
+                        self.get_logger().info(f"Unknown encoding: {msg.encoding}, attempting to use as is")
+                else:
+                    raise Exception("Empty frame after passthrough conversion")
+            except Exception as e1:
+                self.get_logger().warn(f"Passthrough conversion failed: {e1}, trying bgr8...")
+                try:
+                    # bgr8로 직접 변환 시도
+                    frame = self.cv_bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+                except Exception as e2:
+                    self.get_logger().error(f"All conversion methods failed: {e2}")
+                    return
+            
+            # 이미지가 비어있는지 확인
+            if frame is None or frame.size == 0:
+                self.get_logger().warn("Empty frame after conversion")
+                return
+                
             # 공통 처리 함수 호출
             self.process_frame(frame)
         except Exception as e:
             self.get_logger().error(f"이미지 변환 또는 처리 중 오류 발생: {e}")
+            import traceback
+            self.get_logger().error(traceback.format_exc())
 
     def verify_color_hsv(self, roi, color_name):
         """HSV 색 공간을 사용하여 특정 색상 검증"""

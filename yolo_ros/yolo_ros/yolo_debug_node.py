@@ -35,8 +35,8 @@ class YoloDebugNode(LifecycleNode):
         self.declare_parameter("max_det", 100)                # Maximum number of detections
 
         # Image size parameters
-        self.declare_parameter("imgsz_height", 640)
-        self.declare_parameter("imgsz_width", 480)
+        self.declare_parameter("imgsz_height", 360)
+        self.declare_parameter("imgsz_width", 640)
 
         # ROS parameters
         self.declare_parameter("image_reliability", QoSReliabilityPolicy.BEST_EFFORT)  # QoS reliability policy
@@ -44,18 +44,26 @@ class YoloDebugNode(LifecycleNode):
         # Input mode parameters (new)
         self.declare_parameter('input_mode', 'ros2')          # 'webcam' or 'ros2'
         self.declare_parameter('image_topic', '/image_raw')   # ROS2 image topic
-        self.declare_parameter('webcam_id', 0)                # Webcam device ID
+        self.declare_parameter('webcam_id', 2)                # Webcam device ID
 
         # Set default parameter values
         self.declare_parameter('verification_mode', 'hybrid') # Options: 'hybrid', 'hsv', 'yolo'
         self.declare_parameter('confidence_weight_yolo', 0.5)  # Weight for YOLO confidence (for hybrid)
         self.declare_parameter('confidence_weight_hsv', 0.5)   # Weight for HSV confidence (for hybrid)
-        self.declare_parameter('threshold_ratio', 0.3)         # Color verification threshold (for hsv/hybrid)
+        self.declare_parameter('threshold_ratio', 0.25)         # Color verification threshold (for hsv/hybrid)
 
         # for model parameters
-        self.threshold = 0.5
-        self.iou = 0.5
+        self.threshold = 0.4
+        self.iou = 0.4
         self.max_det = 100
+
+        # Add encoding debugging support
+        self.debug_encoding = True
+        self.encoding_stats = {
+            'original': {},     # Original image encoding statistics
+            'successful': {},   # Successfully converted format statistics
+            'failed': {}        # Failed conversion format statistics
+        }
 
     def on_configure(self, state: LifecycleState) -> TransitionCallbackReturn:
         """
@@ -259,6 +267,20 @@ class YoloDebugNode(LifecycleNode):
         if not ret:
             self.get_logger().error("Failed to read frame from camera")
             return
+        
+        if self.debug_encoding:
+            # Log webcam image format (OpenCV uses BGR by default)
+            height, width, channels = frame.shape
+            encoding = f"BGR ({channels} channels)"
+            
+            # Update statistics
+            if encoding not in self.encoding_stats['original']:
+                self.encoding_stats['original'][encoding] = 0
+            self.encoding_stats['original'][encoding] += 1
+            
+            # Log statistics periodically (every 100 frames)
+            if sum(self.encoding_stats['original'].values()) % 100 == 0:
+                self.log_encoding_stats()
 
         # Create a dummy header for the webcam image
         header = rclpy.time.Time().to_msg()
@@ -448,6 +470,11 @@ class YoloDebugNode(LifecycleNode):
             header: Message header for timestamps
         """
         try:
+            # Verify input image is valid
+            if cv_image is None or cv_image.size == 0:
+                self.get_logger().warn("Received empty image for processing")
+                return
+
             # 입력 이미지가 BGR 형식임을 가정하고 RGB로 변환하여 YOLO에 전달
             rgb_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
 
@@ -570,6 +597,39 @@ class YoloDebugNode(LifecycleNode):
         except Exception as e:
             self.get_logger().error(f"Error processing frame: {e}")
 
+    def log_encoding_stats(self):
+        """Log encoding statistics"""
+        stats_msg = "\n=== Image Encoding Statistics ===\n"
+        
+        # Original encoding statistics
+        stats_msg += "Original image encodings:\n"
+        for enc, count in self.encoding_stats['original'].items():
+            stats_msg += f"  - {enc}: {count} times\n"
+        
+        # Successful conversion statistics
+        stats_msg += "\nSuccessful conversion formats:\n"
+        for enc, count in self.encoding_stats['successful'].items():
+            stats_msg += f"  - {enc}: {count} times\n"
+        
+        # Failed conversion statistics
+        stats_msg += "\nFailed conversion formats:\n"
+        for enc, count in self.encoding_stats['failed'].items():
+            stats_msg += f"  - {enc}: {count} times\n"
+        
+        # Recommended encoding format
+        stats_msg += "\nRecommended encoding format: "
+        
+        # Find format with highest success rate
+        successful_encodings = self.encoding_stats['successful']
+        if successful_encodings:
+            best_encoding = max(successful_encodings.items(), key=lambda x: x[1])[0]
+            stats_msg += f"{best_encoding}\n"
+        else:
+            stats_msg += "Not enough data yet.\n"
+        
+        stats_msg += "=======================\n"
+        self.get_logger().info(stats_msg)
+
     def image_cb(self, msg: Image) -> None:
         """
         Callback function for processing incoming ROS images.
@@ -578,9 +638,34 @@ class YoloDebugNode(LifecycleNode):
             msg: ROS Image message
         """
         try:
-            # Convert image
-            cv_image = self.cv_bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+            # Check message itself
+            if msg is None or not msg.data:
+                self.get_logger().warn("Received empty image message")
+                return
 
+            # Use passthrough conversion to preserve original encoding
+            try:
+                # Convert using passthrough to maintain original format
+                cv_image = self.cv_bridge.imgmsg_to_cv2(msg, 'passthrough')
+                
+                # Convert to BGR based on source encoding
+                if msg.encoding.lower() in ['rgb8', 'rgb16']:
+                    cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
+                elif msg.encoding.lower() == 'rgba8':
+                    cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGBA2BGR)
+                elif msg.encoding.lower() == 'mono8' and len(cv_image.shape) == 2:
+                    cv_image = cv2.cvtColor(cv_image, cv2.COLOR_GRAY2BGR)
+                # BGR8 is already in the correct format, no conversion needed
+                
+            except Exception as e:
+                self.get_logger().error(f"Image conversion failed: {e}")
+                return
+            
+            # Verify image is valid
+            if cv_image is None or cv_image.size == 0:
+                self.get_logger().warn("Empty frame after conversion")
+                return
+            
             # Process the frame
             self.process_frame(cv_image, msg.header)
 
