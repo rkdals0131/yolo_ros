@@ -43,7 +43,7 @@ class YoloDebugNode(LifecycleNode):
 
         # Input mode parameters (new)
         self.declare_parameter('input_mode', 'ros2')          # 'webcam' or 'ros2'
-        self.declare_parameter('image_topic', '/image_raw')   # ROS2 image topic
+        self.declare_parameter('image_topic', '/image_raw/uncompressed')   # ROS2 image topic
         self.declare_parameter('webcam_id', 2)                # Webcam device ID
 
         # Set default parameter values
@@ -71,7 +71,7 @@ class YoloDebugNode(LifecycleNode):
         Sets up the YOLO model and publishers/subscribers.
         """
         # Load model from parameter
-        self.model = YOLO('/home/user1/yolov12/pretrained_models/yolov8_cone.pt') # Ensure this path is correct!
+        self.model = YOLO('/home/user1/YOLO/pretrained_models/best.pt') # Ensure this path is correct!
         self.device = self.get_parameter("device").get_parameter_value().string_value
 
         # Get image size from parameters
